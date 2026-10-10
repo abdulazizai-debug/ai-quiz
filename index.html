@@ -212,6 +212,9 @@ main{flex:1;display:flex;flex-direction:column;justify-content:center;padding:26
 .sent .ok svg{width:24px;height:24px}
 .sent h3{margin-top:12px}
 .sent p{font-size:14px;color:var(--muted);margin-top:4px}
+.prev-btn{margin-top:18px;display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:14px;font-weight:600;padding:8px 2px;transition:color .2s}
+.prev-btn:hover{color:var(--accent)}
+.prev-btn svg{width:16px;height:16px}
 .again{display:block;margin:30px auto 0;font-size:14px;font-weight:600;color:var(--muted);text-decoration:underline;text-underline-offset:4px}
 .proto{margin-top:18px;text-align:center;font-size:12px;color:var(--muted)}
 
@@ -255,6 +258,8 @@ main{flex:1;display:flex;flex-direction:column;justify-content:center;padding:26
    المحتوى — عدّل النصوص هنا بدون ما تلمس باقي الكود
    w = الوزن (1 عادي، 2 ضعف). p = النقاط من 0 إلى 3
    ========================================================= */
+const ENDPOINT = 'https://script.google.com/macros/s/AKfycbx2CJMOSfHVt6_KFUxBm3pZBuT0kFQdnT6dp4WoktgUq8SCrolQz4Pj6qDgYRM2ixxu2Q/exec';
+
 const TEXT = {
   kicker:'اختبار مهارات الذكاء الاصطناعي',
   headline:['ماهو مستواك الحقيقي في', 'الذكاء الاصطناعي؟'],
@@ -263,7 +268,7 @@ const TEXT = {
   stats:[['سؤال','17'],['دقايق تقريباً','5'],['مهارات','4']],
   firstHint:'نبدأ بسؤال سريع عنك عشان نفهم نتيجتك.',
   multiHint:'اختر كل اللي ينطبق',
-  nextBtn:'التالي',
+  nextBtn:'التالي', prevBtn:'السابق',
   duelLabel:'أي طلب أفضل؟',
   analyzeTitle:'لحظات ونجهّز نتيجتك',
   analyzeSteps:['نقرأ إجاباتك','نحسب مستواك في 4 مهارات','نجهّز تقريرك'],
@@ -272,7 +277,7 @@ const TEXT = {
   formSub:'دليل عملي يطوّر المهارات الأربع اللي قسناها، مع طلبات جاهزة تستخدمها من اليوم. يوصلك على إيميلك.',
   nameLabel:'الاسم', nameError:'اكتب اسمك.', emailLabel:'الإيميل', emailError:'اكتب إيميل صحيح عشان نرسل لك الدليل.',
   consent:'أوافق على استخدام إيميلي لإرسال الدليل ومحتوى تعليمي عن الذكاء الاصطناعي، حسب <a href="#" class="policy-link">سياسة الخصوصية</a>. أقدر ألغي الاشتراك متى ما بغيت.',
-  formBtn:'أرسل لي الدليل', sentTitle:'تم، الدليل في طريقه لإيميلك', sentNote:'النسخة التجريبية ما ترسل إيميلات فعلياً.',
+  formBtn:'أرسل لي الدليل', sentTitle:'تم، الدليل في طريقه لإيميلك', sentNote:'تأكد من صندوق الوارد، وإذا ما لقيته شيّك على الرسائل غير المرغوبة.', sending:'جاري الإرسال…', sendError:'تعذّر الإرسال، تأكد من الاتصال وحاول مرة ثانية.',
   restart:'أعد الاختبار'
 };
 
@@ -396,7 +401,7 @@ const KEYS = ['أ','ب','ج','د','هـ'];
 const $ = s => document.querySelector(s);
 const main = $('#main');
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-let idx = -1, answers = {}, order = {};
+let idx = -1, answers = {}, order = {}, navTok = 0, fromPop = false;
 
 const ico = {
   arrow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>',
@@ -441,6 +446,7 @@ function setMode(landing){
 }
 
 function landing(){
+  navTok++;
   idx = -1; setMode(true);
   swap(`<section class="hero">
     <div>
@@ -458,6 +464,7 @@ function landing(){
 }
 
 function renderQ(){
+  navTok++;
   const q = QUESTIONS[idx], opts = shuffled(q, idx), chosen = answers[idx];
   if(q.type==='duel'){
     swap(`<section class="q"><div class="qnum">${TEXT.duelLabel}</div><h2>${q.text}</h2>
@@ -484,6 +491,11 @@ function renderQ(){
       <div class="opts">${opts.map((o,n)=>`<button class="opt ${chosen===o.k?'sel':''}" data-k="${o.k}"><span class="key">${KEYS[n]}</span><span>${o.t}</span></button>`).join('')}</div></section>`);
     main.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>pick(+b.dataset.k,b));
   }
+  const sec=main.querySelector('section.q');
+  if(sec){ const b=document.createElement('button'); b.className='prev-btn'; b.type='button';
+    b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>'+TEXT.prevBtn;
+    b.onclick=goBack; sec.appendChild(b); }
+  pushNav();
 }
 
 let locked=false;
@@ -495,7 +507,8 @@ function pick(k, el){
   setTimeout(()=>{ locked=false; if(idx<QUESTIONS.length-1){ idx++; renderQ(); } else analyzing(); }, reduce?60:280);
 }
 
-$('#back').onclick = ()=>{ if(idx>0){ idx--; renderQ(); } else landing(); };
+function goBack(){ if(history.state && typeof history.state.i==='number' && history.state.i>=0) history.back(); else if(idx>0){ idx--; renderQ(); } else landing(); }
+$('#back').onclick = goBack;
 document.addEventListener('keydown', e=>{
   if(idx<0||idx>=QUESTIONS.length) return;
   const n = parseInt(e.key,10);
@@ -508,10 +521,11 @@ function analyzing(){
     <div class="steps">${TEXT.analyzeSteps.map((l,i)=>`<div class="step" id="st${i}"><span class="dot">${ico.check}</span>${l}</div>`).join('')}</div></section>`);
   const t = reduce?150:850, n = TEXT.analyzeSteps.length;
   for(let i=0;i<n;i++){
-    setTimeout(()=>$('#st'+i).classList.add('on'), i*t);
-    setTimeout(()=>{$('#st'+i).classList.remove('on');$('#st'+i).classList.add('done')}, i*t+t-120);
+    setTimeout(()=>{ const el=$('#st'+i); if(el) el.classList.add('on'); }, i*t);
+    setTimeout(()=>{ const el=$('#st'+i); if(el){ el.classList.remove('on'); el.classList.add('done'); } }, i*t+t-120);
   }
-  setTimeout(result, n*t+250);
+  const tok=++navTok;
+  setTimeout(()=>{ if(tok===navTok){ result(); pushNav(); } }, n*t+250);
 }
 
 function scores(){
@@ -592,7 +606,7 @@ function result(){
     })(t0);
   }));
 
-  $('#again').onclick=()=>{answers={};order={};landing();};
+  $('#again').onclick=()=>{answers={};order={};landing();pushNav();};
   $('#sendBtn').onclick=()=>{
     const nm=$('#nm').value.trim(), em=$('#em').value.trim(), okBox=$('#ok').checked;
     const good=/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em);
@@ -602,7 +616,19 @@ function result(){
     if(!nm){$('#nm').focus();return}
     if(!good){$('#em').focus();return}
     if(!okBox) return;
-    $('#formWrap').style.display='none'; $('#sent').classList.add('show');
+    const btn=$('#sendBtn'); if(btn.disabled) return;
+    const answersOut = QUESTIONS.map((q,i)=>{
+      const a=answers[i];
+      if(q.type==='multi') return (a||[]).map(k=>q.options[k].t).join('، ');
+      return a==null ? '' : q.options[a].t;
+    });
+    const payload = { name:nm, email:em, consent:true, level:L.name, overall,
+      prompt:areas.prompt, daily:areas.daily, tools:areas.tools, judgment:areas.judgment,
+      weakest:AREAS[weakest].name, answers:answersOut };
+    btn.disabled=true; btn.textContent=TEXT.sending;
+    fetch(ENDPOINT,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})
+      .then(()=>{ $('#formWrap').style.display='none'; $('#sent').classList.add('show'); })
+      .catch(()=>{ btn.disabled=false; btn.textContent=TEXT.formBtn; alert(TEXT.sendError); });
   };
 }
 
@@ -677,7 +703,19 @@ const Vortex = (()=>{
   document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !m.hidden) close(); });
 })();
 
+/* التنقل بزر الرجوع في المتصفح */
+function pushNav(){ if(!fromPop) history.pushState({i:idx},''); }
+window.addEventListener('popstate',e=>{
+  const i=(e.state && typeof e.state.i==='number')?e.state.i:-1;
+  fromPop=true;
+  if(i<0){ landing(); }
+  else if(i<QUESTIONS.length){ idx=i; setMode(false); renderQ(); }
+  else { idx=QUESTIONS.length; setMode(false); navTok++; result(); }
+  fromPop=false;
+});
+
 buildSegs();
+history.replaceState({i:-1},'');
 landing();
 </script>
 </body>
