@@ -284,7 +284,8 @@ const TEXT = {
 const POLICY = {
   title:'سياسة الخصوصية — Abdulaziz AI | Analytics',
   items:[
-    'نجمع اسمك وبريدك الإلكتروني ونتيجة اختبارك فقط، ولا نجمع أي بيانات حساسة.',
+    'عند إرسال النموذج نجمع اسمك وبريدك الإلكتروني ونتيجة اختبارك، ولا نجمع أي بيانات حساسة.',
+    'نسجّل إجاباتك ومدى تقدمك في الاختبار بشكل مجهول، دون اسم أو بريد إلكتروني، بهدف تحسين الاختبار والمحتوى.',
     'نستخدم بياناتك لإرسال الدليل المجاني، ومحتوى تعليمي في مجال الذكاء الاصطناعي وتحليل البيانات، ومعلومات عن دوراتنا التدريبية.',
     'لا نبيع بياناتك، ولا نشاركها مع أي جهة لأغراض تسويقية.',
     'نعالج بياناتك بناءً على موافقتك، ويحق لك سحب هذه الموافقة في أي وقت.',
@@ -496,6 +497,24 @@ function renderQ(){
     b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>'+TEXT.prevBtn;
     b.onclick=goBack; sec.appendChild(b); }
   pushNav();
+  track('question');
+}
+
+/* تتبع التقدم بشكل مجهول: فتح الرابط، كل سؤال يوصله، والنتيجة */
+const SID = (()=>{ const n=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  try{ let s=sessionStorage.getItem('qsid'); if(!s){ s=n(); sessionStorage.setItem('qsid',s); } return s; }catch(e){ return n(); } })();
+const QS = new URLSearchParams(location.search);
+const DEVICE = /iPad|Tablet/i.test(navigator.userAgent) ? 'تابلت' : /Mobi|Android|iPhone/i.test(navigator.userAgent) ? 'جوال' : 'كمبيوتر';
+function answerTexts(){
+  return QUESTIONS.map((q,i)=>{ const a=answers[i];
+    if(q.type==='multi') return (a||[]).map(k=>q.options[k].t).join('، ');
+    return a==null ? '' : q.options[a].t; });
+}
+function track(stage, extra){
+  const body = JSON.stringify(Object.assign({ type:'track', sid:SID, stage, step:idx+1, answers:answerTexts(),
+    device:DEVICE, src:QS.get('utm_source')||QS.get('src')||'', ref:document.referrer||'' }, extra||{}));
+  try{ if(navigator.sendBeacon && navigator.sendBeacon(ENDPOINT, new Blob([body],{type:'text/plain;charset=utf-8'}))) return; }catch(e){}
+  fetch(ENDPOINT,{method:'POST',mode:'no-cors',keepalive:true,headers:{'Content-Type':'text/plain;charset=utf-8'},body}).catch(()=>{});
 }
 
 let locked=false;
@@ -562,6 +581,7 @@ function result(){
   const L=[...LEVELS].reverse().find(l=>overall>=l.min), li=LEVELS.indexOf(L);
   const C=2*Math.PI*56;
   const weakest=Object.keys(areas).sort((x,y)=>areas[x]-areas[y])[0];
+  track('finished',{level:L.name, overall});
   swap(`<section class="res">
     <div class="res-head">
       <div class="ring">
@@ -584,6 +604,7 @@ function result(){
         <h3>${TEXT.formTitle}</h3><p class="sub">${TEXT.formSub}</p>
         <div class="field" id="fName"><label for="nm">${TEXT.nameLabel}</label><input id="nm" type="text" autocomplete="given-name" required><div class="msg">${TEXT.nameError}</div></div>
         <div class="field" id="fMail"><label for="em">${TEXT.emailLabel}</label><input id="em" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com"><div class="msg">${TEXT.emailError}</div></div>
+        <input id="hp" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
         <label class="consent" id="fOk"><input type="checkbox" id="ok"><span>${TEXT.consent}</span></label>
         <button class="cta" id="sendBtn">${TEXT.formBtn}</button>
       </div>
@@ -617,14 +638,10 @@ function result(){
     if(!good){$('#em').focus();return}
     if(!okBox) return;
     const btn=$('#sendBtn'); if(btn.disabled) return;
-    const answersOut = QUESTIONS.map((q,i)=>{
-      const a=answers[i];
-      if(q.type==='multi') return (a||[]).map(k=>q.options[k].t).join('، ');
-      return a==null ? '' : q.options[a].t;
-    });
+    const answersOut = answerTexts();
     const payload = { name:nm, email:em, consent:true, level:L.name, overall,
       prompt:areas.prompt, daily:areas.daily, tools:areas.tools, judgment:areas.judgment,
-      weakest:AREAS[weakest].name, answers:answersOut };
+      weakest:AREAS[weakest].name, answers:answersOut, sid:SID, hp:$('#hp').value };
     btn.disabled=true; btn.textContent=TEXT.sending;
     fetch(ENDPOINT,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})
       .then(()=>{ $('#formWrap').style.display='none'; $('#sent').classList.add('show'); })
@@ -717,6 +734,7 @@ window.addEventListener('popstate',e=>{
 buildSegs();
 history.replaceState({i:-1},'');
 landing();
+track('opened');
 </script>
 </body>
 </html>
